@@ -70,13 +70,20 @@ io.on("connection", (socket) => {
       signal: data.signalData,
       from: data.from,
       callerName: data.callerName,
+      callerWidth: data.selfWidth,
+      callerHeight: data.selfHeight,
     });
   });
 
   socket.on("acceptCall", (data) => {
     //@ addFriend(data.friendName,data.acceptorName)
     console.log(data.to);
-    io.to(data.to).emit("callAcceptedUser", data.signal);
+    io.to(data.to).emit(
+      "callAcceptedUser",
+      data.signal,
+      data.selfWidth,
+      data.selfHeight
+    );
   });
 
   socket.on("rejectCall", (data) => {
