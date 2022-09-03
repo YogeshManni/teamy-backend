@@ -10,10 +10,16 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const { user, peopleOnline } = require("./model.js");
 
-//Middelware
+/**************** Middelwares ****************/
+
 app.use(bodyParser.json());
 app.use(cors());
+
+/********************* PORT ***********************/
+
 const port = process.env.PORT || 5000;
+
+/********************* Mongoose connection ****************************/
 const connectionUrl =
   "mongodb+srv://deep123:p0GopIwbEVP7oMiF@cluster0.akzi6.mongodb.net/teamsDb?retryWrites=true&w=majority";
 
@@ -26,6 +32,8 @@ mongoose
   .catch((err) => {
     console.log(err);
   });
+
+/*****************************************************************/
 
 //const options = {
 //  key: fs.readFileSync('key.pem'),
@@ -50,7 +58,8 @@ io.on("connection", (socket) => {
     if (!users[socket.id]) {
       var obj = [];
       obj.push(socket.id);
-      obj.push(connectedUser);
+      obj.push(connectedUser.username);
+      obj.push(connectedUser.isGuest);
       users[socket.id] = obj;
       console.log(users);
     }
@@ -112,20 +121,6 @@ const addFriend = (friendName, userName) => {
   }
 };
 
-const userExist = async (userName) => {
-  try {
-    await user.findOne({ username: userName }, (err, doc) => {
-      if (err) throw err;
-      if (doc) {
-        return true;
-      }
-      return false;
-    });
-  } catch (err) {
-    return false;
-  }
-};
-
 const getFriendsList = async (userName) => {
   try {
     await user.findOne({ username: userName }, (err, doc) => {
@@ -139,22 +134,113 @@ const getFriendsList = async (userName) => {
   }
 };
 
-const createUser = async (userName) => {
-  const ifUserExist = userExist(userName);
+const userExist = async (userName, userEmail) => {
+  try {
+    let res = await user.findOne({
+      $or: [{ username: userName }, { email: userEmail }],
+    });
+    if (res) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch (err) {
+    return false;
+  }
+};
+
+app.post("/addFriend", async (req, res) => {
+  try {
+    const username = req.body.selfName;
+    const friendname = req.body.friendName;
+    user.findOne(
+      {
+        $or: [{ username: username }, { email: username }],
+      },
+      (err, doc) => {
+        if (err) {
+          res.status(500).send({ error: err });
+        }
+        doc.friends.push(friendname);
+        doc.save();
+        res.status(200).send({ message: "Successfully added friend to DB" });
+      }
+    );
+  } catch (err) {
+    res.status(500).send({ error: err });
+  }
+});
+
+app.get("/getFriendList/:user", (req, res) => {
+  try {
+    const username = req.params.user;
+    user.findOne(
+      {
+        $or: [{ username: username }, { email: username }],
+      },
+      (err, doc) => {
+        if (err) {
+          res.status(500).send({ error: err });
+        }
+
+        res
+          .status(200)
+          .send({ friends: doc.friends, message: "Successfully fetched list" });
+      }
+    );
+  } catch (err) {
+    res.status(500).send({ error: err });
+  }
+});
+
+app.post("/createUser", async (req, res) => {
+  let userData = req.body;
+  const ifUserExist = await userExist(userData.nickname, userData.email);
   try {
     if (!ifUserExist) {
       const newUser = new user();
-      newUser.username = userName;
+      newUser.username = userData.nickname;
       newUser.friends = [];
+      newUser.password = userData.password;
+      newUser.email = userData.email;
+      newUser.phone = userData.phoneNumber;
       newUser.save();
-      print(`user ${userName} created !!!`);
+      print(`user ${userData.nickname} created !!!`);
+      res.status(200).send({ message: "User created Successfully" });
     } else {
-      print(`user ${userName} joined !!!`);
+      print(`user ${userData.nickname} already exist !!!`);
+      res.status(500).send({
+        message: "User already exist, please pick a different nickname",
+      });
     }
   } catch (err) {
     print(err);
+    res.status(500).send({ message: err });
   }
-};
+});
+
+app.post("/login", async (req, res) => {
+  let userData = req.body;
+  const userFound = await user.findOne({
+    $or: [{ username: userData.userName }, { email: userData.userName }],
+  });
+  if (userFound) {
+    if (userFound.password == userData.password) {
+      res.status(200).send({
+        message: "Logged in Successfully !!",
+        userName: userFound.username,
+        status: 0,
+      });
+    } else {
+      res.status(401).send({ message: "Invalid Password !!", status: 1 });
+    }
+  } else {
+    res.status(401).send({
+      message: "User not found, please check your credentials",
+      status: 2,
+    });
+  }
+});
 
 app.get("/", (req, res) => {
   res.status(200).send("Hey, Server is up fellas !!!");
